@@ -1,0 +1,19 @@
+[project]
+name = "knowledge-harness"
+version = "0.1.0"
+description = "Knowledge management system with role-casting and usage-aware retrieval"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "numpy>=1.24",
+    "sentence-transformers>=2.2.0",
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+knowledge-mcp = "mcp_server:main"

@@ -1,0 +1,59 @@
+# Knowledge Harness Configuration
+# ================================
+# Tune these parameters based on your usage patterns.
+
+# Database
+database:
+  path: "./knowledge.db"
+  
+# Chunking
+chunking:
+  # For paragraph-based chunking
+  min_chunk_size: 200      # Minimum characters per chunk
+  max_chunk_size: 1500     # Maximum characters per chunk
+  
+  # Keep short documents whole
+  whole_doc_threshold: 1500
+
+# Retrieval weights (should roughly sum to 1.0)
+retrieval:
+  weights:
+    keyword: 0.20
+    semantic: 0.30
+    concept: 0.20
+    usage: 0.20
+    recency: 0.10
+  
+  # How fast does recency decay? (half-life in days)
+  recency_halflife_days: 30
+  
+  # Usage-based adjustments
+  usage_boost_threshold: 0.70    # Boost chunks with success rate above this
+  usage_penalty_threshold: 0.30  # Penalize chunks below this
+  
+  # Default result limits
+  default_limit: 10
+
+# Consolidation
+consolidation:
+  # After how many days of no access should content be flagged as stale?
+  stale_threshold_days: 90
+  
+  # Minimum usage traces before adjusting scores
+  min_traces_for_adjustment: 3
+
+# Concept extraction (guidance for LLM)
+concepts:
+  # Maximum concepts to extract per document
+  max_per_document: 10
+  
+  # Minimum word length to consider as potential concept
+  min_term_length: 4
+
+# Graph
+graph:
+  # Maximum hops for graph traversal
+  max_hops: 2
+  
+  # Decay factor per hop
+  hop_decay: 0.5
