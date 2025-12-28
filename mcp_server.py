@@ -268,6 +268,20 @@ This is how the knowledge base learns which content is good for which tasks.""",
             }
         ),
         Tool(
+            name="kb_delete_document",
+            description="Delete a document and all its chunks from the knowledge base. Use for removing bad/misleading content.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "description": "ID of the document to delete"
+                    }
+                },
+                "required": ["document_id"]
+            }
+        ),
+        Tool(
             name="kb_reflect",
             description="""Run a comprehensive reflection on the knowledge base.
 
@@ -329,6 +343,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await handle_get_chunk(harness, arguments)
         elif name == "kb_list_documents":
             return await handle_list_documents(harness, arguments)
+        elif name == "kb_delete_document":
+            return await handle_delete_document(harness, arguments)
         elif name == "kb_reflect":
             return await handle_reflect(harness)
         elif name == "kb_quick_insights":
@@ -524,6 +540,24 @@ async def handle_list_documents(harness: KnowledgeHarness, args: dict) -> list[T
         output_lines.append("")
 
     return [TextContent(type="text", text="\n".join(output_lines))]
+
+
+async def handle_delete_document(harness: KnowledgeHarness, args: dict) -> list[TextContent]:
+    """Handle kb_delete_document tool."""
+    doc_id = args["document_id"]
+
+    # Get doc info before deleting for confirmation message
+    doc = harness.get_document(doc_id)
+    if not doc:
+        return [TextContent(type="text", text=f"Document not found: {doc_id}")]
+
+    chunks = harness.get_chunks(doc_id)
+    deleted = harness.db.delete_document(doc_id)
+
+    if deleted:
+        return [TextContent(type="text", text=f"Deleted document '{doc.title}' ({len(chunks)} chunks removed)")]
+    else:
+        return [TextContent(type="text", text=f"Failed to delete document: {doc_id}")]
 
 
 async def handle_reflect(harness: KnowledgeHarness) -> list[TextContent]:

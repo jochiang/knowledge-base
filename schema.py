@@ -455,11 +455,17 @@ class KnowledgeDB:
     def update_document_access(self, doc_id: str):
         """Update last_accessed and increment access_count."""
         self.conn.execute("""
-            UPDATE documents 
+            UPDATE documents
             SET last_accessed = ?, access_count = access_count + 1
             WHERE id = ?
         """, (datetime.now(timezone.utc).isoformat(), doc_id))
         self.conn.commit()
+
+    def delete_document(self, doc_id: str) -> bool:
+        """Delete a document and all its chunks (cascades to embeddings, concepts)."""
+        cursor = self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
 
     # ------------------------------------------------------------------------
     # Chunk operations

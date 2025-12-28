@@ -85,6 +85,7 @@ These are available but not included in the server instructions—useful for deb
 | `kb_stats` | Database statistics |
 | `kb_get_chunk` | Get chunk details with full usage history |
 | `kb_list_documents` | List all documents |
+| `kb_delete_document` | Remove a document and all its chunks |
 
 ## Task Types
 
