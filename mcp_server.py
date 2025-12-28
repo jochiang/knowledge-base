@@ -27,6 +27,7 @@ from mcp.types import Tool, TextContent
 # Import harness components
 from harness import KnowledgeHarness
 from schema import TaskType, UsageOutcome
+from context import ContextAssembler, ChunkDossier
 from reflect import run_reflection, quick_insights
 
 
@@ -113,8 +114,14 @@ async def list_tools() -> list[Tool]:
             name="kb_search",
             description="""Search the knowledge base using multi-strategy retrieval (keyword, semantic, concept, usage history).
 
-Returns ranked chunks with scores, source info, and usage history.
-Use this to find relevant knowledge before answering questions.""",
+Returns ranked chunks with rich context for LLM reasoning:
+- Individual usage traces with dates, task types, outcomes, and notes
+- Task-type breakdown (success rates per task type)
+- Functional profiles (consolidated learning about what content is good for)
+- Source profiles (what this source is generally good for)
+
+The usage history lets you reason about whether a chunk is likely to help with your current task.
+Optionally provide task_type to boost chunks that have worked well for similar tasks.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -334,44 +341,95 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def handle_search(harness: KnowledgeHarness, args: dict) -> list[TextContent]:
     """Handle kb_search tool."""
+    import asyncio
+
     query = args["query"]
     limit = args.get("limit", 5)
+    task_type_str = args.get("task_type")
 
-    results = harness.search(query, limit=limit)
+    # Convert task_type string to enum if provided
+    task_type = TaskType(task_type_str) if task_type_str else None
+
+    # Run blocking search in thread pool to avoid blocking event loop
+    results = await asyncio.to_thread(harness.search, query, limit=limit, task_type=task_type_str)
 
     if not results:
         return [TextContent(type="text", text="No results found.")]
 
+    # Use ContextAssembler to build rich dossiers
+    assembler = ContextAssembler(harness.db)
+
     output_lines = [f"Found {len(results)} results for '{query}':\n"]
 
     for i, r in enumerate(results, 1):
-        output_lines.append(f"--- Result {i} (score: {r.score:.3f}) ---")
+        # Build full dossier for this chunk
+        dossier = assembler.assemble_dossier(r.chunk)
+
+        output_lines.append(f"{'='*60}")
+        output_lines.append(f"RESULT {i} (score: {r.score:.3f})")
+        output_lines.append(f"{'='*60}")
         output_lines.append(f"Chunk ID: {r.chunk.id}")
         output_lines.append(f"Document: {r.document.title}")
         output_lines.append(f"Source: {r.document.source}")
         output_lines.append(f"Strategies: {', '.join(r.strategies)}")
 
-        if r.usage_stats and r.usage_stats.get("total", 0) > 0:
-            stats = r.usage_stats
-            output_lines.append(f"Usage: {stats['total']} traces, {stats.get('success_rate', 0):.0%} success")
+        # Functional profile (consolidated learning)
+        if dossier.functional_profile:
+            output_lines.append(f"\nFUNCTIONAL PROFILE: {dossier.functional_profile}")
 
-        if r.chunk.functional_profile:
-            output_lines.append(f"Profile: {r.chunk.functional_profile}")
+        # Source-level profile if available
+        if dossier.source_functional_profile:
+            output_lines.append(f"SOURCE PROFILE: {dossier.source_functional_profile}")
 
-        output_lines.append(f"\nContent:\n{r.chunk.content}\n")
+        # Individual usage traces - the key signal for LLM reasoning
+        if dossier.usage_history:
+            output_lines.append(f"\nUSAGE HISTORY ({len(dossier.usage_history)} traces):")
+            for trace in dossier.usage_history[:5]:  # Show up to 5 recent traces
+                outcome_symbol = {"win": "✓", "partial": "~", "miss": "✗", "misleading": "⚠"}
+                symbol = outcome_symbol.get(trace["outcome"], "?")
+                task = trace.get("task_type", "other")
+                date = trace.get("timestamp", "")[:10]  # Just the date part
+                notes = trace.get("notes") or trace.get("context", "")
+                output_lines.append(f"  {date} [{task}] {symbol} {trace['outcome'].upper()}: {notes}")
+
+        # Usage stats by task type
+        if dossier.usage_stats.get("total", 0) > 0:
+            output_lines.append(f"\nUSAGE STATS:")
+            counts = dossier.usage_stats.get("counts", {})
+            output_lines.append(f"  Overall: {counts.get('win', 0)} wins, {counts.get('partial', 0)} partial, "
+                              f"{counts.get('miss', 0)} misses, {counts.get('misleading', 0)} misleading")
+
+            # Breakdown by task type
+            by_task = dossier.usage_stats_by_task.get("by_task", {})
+            if by_task:
+                output_lines.append("  By task type:")
+                for task_name, stats in by_task.items():
+                    if stats["total"] > 0:
+                        output_lines.append(f"    {task_name}: {stats['success_rate']:.0%} success ({stats['total']} uses)")
+
+        # Related concepts
+        if dossier.concepts:
+            output_lines.append(f"\nCONCEPTS: {', '.join(dossier.concepts)}")
+
+        # The actual content
+        output_lines.append(f"\nCONTENT:\n{r.chunk.content}")
+        output_lines.append("")
 
     return [TextContent(type="text", text="\n".join(output_lines))]
 
 
 async def handle_semantic_search(harness: KnowledgeHarness, args: dict) -> list[TextContent]:
     """Handle kb_semantic_search tool."""
+    import asyncio
+
     query = args["query"]
     limit = args.get("limit", 5)
 
     if not harness.embeddings_enabled:
         return [TextContent(type="text", text="Semantic search not available (sentence-transformers not installed)")]
 
-    results = harness.semantic_search(query, limit=limit)
+    # Run blocking search in thread pool to avoid blocking event loop
+    results = await asyncio.to_thread(harness.semantic_search, query, limit=limit)
 
     if not results:
         return [TextContent(type="text", text="No results found.")]
@@ -390,11 +448,14 @@ async def handle_semantic_search(harness: KnowledgeHarness, args: dict) -> list[
 
 async def handle_ingest(harness: KnowledgeHarness, args: dict) -> list[TextContent]:
     """Handle kb_ingest tool."""
+    import asyncio
+
     content = args["content"]
     title = args["title"]
     source = args.get("source", "manual")
 
-    result = harness.ingest_text(content, title=title, source=source)
+    # Run blocking ingest in thread pool to avoid blocking event loop
+    result = await asyncio.to_thread(harness.ingest_text, content, title=title, source=source)
 
     output = {
         "status": "success",
@@ -481,8 +542,24 @@ async def handle_quick_insights(harness: KnowledgeHarness) -> list[TextContent]:
 # Main
 # ============================================================================
 
+def _preload():
+    """Pre-load harness and embedding model before accepting requests."""
+    import sys
+    print("Pre-loading harness...", file=sys.stderr)
+    harness = get_harness()
+
+    # Trigger model loading by doing a dummy embed
+    if harness.embeddings_enabled and harness._embedder:
+        print("Pre-loading embedding model...", file=sys.stderr)
+        harness._embedder.embed("warmup")
+        print("Model ready.", file=sys.stderr)
+
+
 async def main():
     """Run the MCP server."""
+    # Pre-load before starting to avoid blocking during requests
+    _preload()
+
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,

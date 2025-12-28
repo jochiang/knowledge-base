@@ -34,7 +34,7 @@ if str(src_path) not in sys.path:
 
 from schema import (
     KnowledgeDB, Document, Chunk, Concept,
-    ContentType, UsageOutcome, init_db
+    ContentType, UsageOutcome, TaskType, init_db
 )
 from ingest import IngestPipeline, IngestResult, quick_ingest, ingest_file
 from retrieve import (
@@ -113,8 +113,9 @@ class KnowledgeHarness:
             self._embedder = LocalEmbedder(self.db, model_name=model)
             self._embed_fn = self._embedder.embed
         elif enable_embeddings and not EMBEDDINGS_AVAILABLE:
-            print("Warning: sentence-transformers not installed. Semantic search disabled.")
-            print("Install with: pip install sentence-transformers")
+            import sys
+            print("Warning: sentence-transformers not installed. Semantic search disabled.", file=sys.stderr)
+            print("Install with: pip install sentence-transformers", file=sys.stderr)
 
         # Initialize components
         self._init_components()
@@ -214,26 +215,45 @@ class KnowledgeHarness:
         self,
         query: str,
         limit: int = 10,
-        strategies: list[str] = None
+        strategies: list[str] = None,
+        task_type: str | TaskType = None
     ) -> list[RetrievalResult]:
         """
         Search the knowledge base.
-        
+
         Args:
             query: Search query
             limit: Maximum results
             strategies: List of strategies to use. Options:
                        "keyword", "semantic", "concept", "usage", "recency"
                        Default: all applicable strategies
-        
+            task_type: Optional task type for context-aware retrieval.
+                      If provided, boosts chunks that performed well for this task type.
+                      Options: "factual_lookup", "implementation_howto",
+                              "conceptual_understanding", "debugging",
+                              "decision_support", "exploratory_research", "other"
+
         Returns:
             List of RetrievalResult with chunk, document, scores, etc.
         """
         strategy_enums = None
         if strategies:
             strategy_enums = [RetrievalStrategy(s) for s in strategies]
-        
-        return self.retriever.retrieve(query, strategies=strategy_enums, limit=limit)
+
+        # Convert task_type string to enum if needed
+        task_type_enum = None
+        if task_type:
+            if isinstance(task_type, str):
+                task_type_enum = TaskType(task_type)
+            else:
+                task_type_enum = task_type
+
+        return self.retriever.retrieve(
+            query,
+            strategies=strategy_enums,
+            limit=limit,
+            task_type=task_type_enum
+        )
     
     def search_formatted(self, query: str, limit: int = 10, verbose: bool = False) -> str:
         """Search and return formatted string output."""

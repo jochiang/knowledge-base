@@ -12,7 +12,7 @@ from enum import Enum
 
 from schema import (
     KnowledgeDB, Document, Chunk, Concept, UsageTrace,
-    EntityType, UsageOutcome
+    EntityType, UsageOutcome, TaskType
 )
 
 
@@ -91,6 +91,7 @@ class Retriever:
         strategies: list[RetrievalStrategy] = None,
         limit: int = 10,
         min_score: float = 0.0,
+        task_type: TaskType = None,
     ) -> list[RetrievalResult]:
         """
         Main retrieval entry point.
@@ -119,7 +120,7 @@ class Retriever:
             strategy_results["concept"] = self._concept_search(query)
         
         if RetrievalStrategy.USAGE in strategies:
-            strategy_results["usage"] = self._usage_search(query)
+            strategy_results["usage"] = self._usage_search(query, task_type=task_type)
         
         if RetrievalStrategy.RECENCY in strategies:
             strategy_results["recency"] = self._recency_scores()
@@ -265,31 +266,34 @@ class Retriever:
         
         return results
     
-    def _usage_search(self, query: str) -> dict[str, float]:
-        """Find chunks that were useful in similar contexts."""
+    def _usage_search(self, query: str, task_type: TaskType = None) -> dict[str, float]:
+        """Find chunks that were useful in similar contexts.
+
+        If task_type is provided, boosts chunks that performed well for that task type.
+        """
         results = {}
-        
+
         # Get all usage traces
         traces = self.db.conn.execute(
             "SELECT * FROM usage_traces"
         ).fetchall()
-        
+
         query_terms = set(re.findall(r'\w+', query.lower()))
-        
+
         for row in traces:
             trace = self.db._row_to_usage_trace(row)
-            
+
             # Check if trace context is similar to query
             context_terms = set(re.findall(r'\w+', trace.context_summary.lower()))
             if trace.query:
                 context_terms.update(re.findall(r'\w+', trace.query.lower()))
-            
+
             overlap = len(query_terms & context_terms)
             if overlap < 2:  # Require some meaningful overlap
                 continue
-            
+
             context_similarity = overlap / max(len(query_terms), 1)
-            
+
             # Weight by outcome
             outcome_weight = {
                 UsageOutcome.WIN: 1.0,
@@ -297,23 +301,46 @@ class Retriever:
                 UsageOutcome.MISS: 0.0,
                 UsageOutcome.MISLEADING: -0.5,
             }.get(trace.outcome, 0)
-            
-            score = context_similarity * outcome_weight
-            
+
+            # Boost if task type matches current task
+            task_type_boost = 1.0
+            if task_type and trace.task_type == task_type:
+                # Matching task type gets a significant boost
+                task_type_boost = 1.5
+
+            score = context_similarity * outcome_weight * task_type_boost
+
             # Apply to all chunks in this trace
             for chunk_id in trace.chunk_ids:
                 if chunk_id in results:
                     results[chunk_id] = max(results[chunk_id], score)
                 else:
                     results[chunk_id] = score
-        
+
+        # Also boost chunks based on their success rate for this task type
+        if task_type:
+            all_chunks = self.db.conn.execute("SELECT id FROM chunks").fetchall()
+            for row in all_chunks:
+                chunk_id = row["id"]
+                task_stats = self.db.get_chunk_success_rate_by_task(chunk_id)
+                by_task = task_stats.get("by_task", {})
+
+                if task_type.value in by_task:
+                    stats = by_task[task_type.value]
+                    if stats["total"] >= 2:  # Need enough data
+                        # High success rate for this task = boost
+                        rate = stats["success_rate"]
+                        if rate > 0.7:
+                            boost = 0.3 * rate  # Up to 0.3 bonus
+                            results[chunk_id] = results.get(chunk_id, 0) + boost
+
         # Remove negative scores and normalize
         results = {k: v for k, v in results.items() if v > 0}
         if results:
             max_score = max(results.values())
             if max_score > 0:
                 results = {k: v / max_score for k, v in results.items()}
-        
+
         return results
     
     def _recency_scores(self) -> dict[str, float]:

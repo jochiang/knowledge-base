@@ -60,10 +60,12 @@ class LocalEmbedder:
                 "Install with: pip install sentence-transformers"
             )
 
-        print(f"Loading embedding model: {self.model_name}...")
+        import sys
+        # Use stderr for logging since stdout is used for MCP protocol
+        print(f"Loading embedding model: {self.model_name}...", file=sys.stderr)
         self._model = SentenceTransformer(self.model_name, device=self.device)
         self._dimension = self._model.get_sentence_embedding_dimension()
-        print(f"Model loaded. Dimension: {self._dimension}")
+        print(f"Model loaded. Dimension: {self._dimension}", file=sys.stderr)
 
     def embed(self, text: str) -> list[float]:
         """
@@ -143,7 +145,8 @@ class LocalEmbedder:
             to_embed_ids.append(chunk.id)
 
         if to_embed:
-            print(f"Embedding {len(to_embed)} chunks...")
+            import sys
+            print(f"Embedding {len(to_embed)} chunks...", file=sys.stderr)
             embeddings = self.embed_batch(to_embed, batch_size)
 
             for chunk_id, embedding in zip(to_embed_ids, embeddings):

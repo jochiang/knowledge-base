@@ -393,9 +393,13 @@ class KnowledgeDB:
 
     def __init__(self, db_path: str | Path = "knowledge.db"):
         self.db_path = Path(db_path)
-        self.conn = sqlite3.connect(self.db_path)
+        # check_same_thread=False allows connection to be used across threads
+        # This is safe when we ensure serialized access (which asyncio.to_thread does)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
+        # WAL mode for better concurrent access from multiple processes
+        self.conn.execute("PRAGMA journal_mode = WAL")
         self._init_schema()
 
     def _init_schema(self):

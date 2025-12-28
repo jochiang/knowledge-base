@@ -10,6 +10,8 @@ ENV/
 
 # Database
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 
@@ -29,3 +31,4 @@ Thumbs.db
 
 # Project specific
 .claude/
+.mcp.json
