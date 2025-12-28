@@ -1,5 +1,7 @@
 # Knowledge Harness
 
+> **Note**: This is a proof of concept, vibe-coded with Claude. It works, but expect rough edges.
+
 A usage-augmented retrieval (UAR) system for Claude Code. Unlike traditional RAG which is stateless, this system learns from usage outcomes to improve retrieval over time.
 
 ## Core Idea
