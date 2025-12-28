@@ -65,17 +65,26 @@ Restart Claude Code. The knowledge tools will be available.
 
 ## MCP Tools
 
+### Core Tools
+
 | Tool | Description |
 |------|-------------|
 | `kb_search` | Multi-strategy search with rich usage history |
 | `kb_semantic_search` | Pure embedding similarity search |
 | `kb_ingest` | Add content (auto-chunked and embedded) |
 | `kb_record` | Record usage outcome for retrieved chunks |
+| `kb_reflect` | Comprehensive analysis of what's working |
+| `kb_quick_insights` | Fast health check |
+
+### Utility Tools (not advertised to LLM)
+
+These are available but not included in the server instructions—useful for debugging and admin:
+
+| Tool | Description |
+|------|-------------|
 | `kb_stats` | Database statistics |
 | `kb_get_chunk` | Get chunk details with full usage history |
 | `kb_list_documents` | List all documents |
-| `kb_reflect` | Comprehensive analysis of what's working |
-| `kb_quick_insights` | Fast health check |
 
 ## Task Types
 
