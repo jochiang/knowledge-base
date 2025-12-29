@@ -27,6 +27,33 @@ This creates a usage history for each chunk. Over time, the system learns what e
 
 Rather than pre-computing a score that bakes in these signals, the raw usage history is surfaced directly to the LLM. It sees "this chunk won 3x for debugging, missed 2x for factual lookup" and reasons about whether to trust it for the current task. The judgment stays with the reasoning system.
 
+### Relation to Agentic Memory Systems
+
+UAR fits into the emerging landscape of agentic RAG and agent memory systems:
+
+| Concept | UAR Implementation |
+|---------|-------------------|
+| **Episodic Memory** | Usage traces (timestamped outcomes with context) |
+| **Semantic Memory** | Chunks + functional profiles |
+| **Memory Evolution** | Consolidation (traces → profiles over time) |
+| **Write Capability** | `kb_ingest` + `kb_record` |
+| **Retrieval as Tool** | `kb_search` invoked by research sub-agent |
+
+The progression from traditional RAG → Agentic RAG → Agent Memory is about adding **write capabilities** so systems can learn from interactions. UAR takes this further with **explicit outcome attribution**: not just "what happened" but "did it actually help, and for what kind of task?"
+
+This is similar to patterns like A-Mem (Zettelkasten-inspired agent memory) where notes evolve as new related memories arrive. Our consolidation process serves the same purpose—converting episodic usage traces into semantic functional profiles that inform future retrieval.
+
+### Feedback Attribution
+
+A key challenge in learning systems is attribution: when multiple sources contribute to an answer, which ones deserve credit?
+
+UAR solves this with **self-evaluation**: after synthesizing a response, the sub-agent evaluates which chunks actually contributed to the summary versus which were retrieved but unused. The user provides a single piece of feedback ("helpful" / "not useful"), and that feedback is recorded precisely:
+
+- **Contributing chunks** → user's feedback (win/partial/miss/misleading)
+- **Non-contributing chunks** → automatic "miss" (retrieved but not useful)
+
+This gives per-source learning without burdening the user with per-source feedback. The system learns "Neo4j docs are great for implementation" and "Wikipedia was retrieved but didn't help" from a single thumbs-up.
+
 ## Features
 
 - **Multi-strategy retrieval**: keyword, semantic (MiniLM embeddings), concept, usage history, recency

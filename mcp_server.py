@@ -100,8 +100,8 @@ For research tasks, spawn a sub-agent to handle KB + web search. This keeps the 
 **How to use it:**
 1. Spawn a sub-agent with the query and context
 2. Sub-agent searches KB first, then web if needed
-3. Sub-agent ingests valuable findings and returns results with chunk IDs
-4. You review the results and provide feedback
+3. Sub-agent ingests valuable findings and returns results with chunk IDs and source links
+4. You review the results and provide feedback (always include source links when presenting to user)
 5. Sub-agent records the outcome
 
 **Sub-agent instructions template:**
@@ -110,20 +110,32 @@ Research: [query]
 Context: [why this is needed]
 
 1. Search KB first: kb_search("[query]", task_type="[type]")
+   - Note the chunk IDs returned
 2. If KB insufficient, search web and ingest useful content
-3. Return findings with chunk IDs used
-4. Ask me for feedback on usefulness
-5. Record outcome with kb_record based on my feedback
+   - Note the NEW chunk IDs from kb_ingest responses
+3. Synthesize findings into a summary
+4. Self-evaluate: which chunks actually contributed to the summary?
+   - Contributing chunks: informed the final answer (from BOTH KB search AND new ingests)
+   - Non-contributing chunks: retrieved but not used
+5. Return:
+   - Summary of what you learned
+   - Source links (URLs) used
+   - Contributing chunk IDs (including newly ingested)
+   - Non-contributing chunk IDs (if any)
+6. Ask me for feedback on usefulness
+7. Record outcomes:
+   - Contributing chunks → user's feedback (win/partial/miss/misleading)
+   - Non-contributing chunks → "miss" (retrieved but not useful)
 ```
 
 **Feedback loop:**
 When the sub-agent returns results, tell it:
-- "helpful" → records as "win"
-- "partial" → records as "partial"
-- "not useful" → records as "miss"
-- "misleading" → records as "misleading"
+- "helpful" → contributing chunks recorded as "win"
+- "partial" → contributing chunks recorded as "partial"
+- "not useful" → all chunks recorded as "miss"
+- "misleading" → contributing chunks recorded as "misleading"
 
-This closes the loop and helps the KB learn what works.
+This closes the loop with precise per-chunk attribution.
 """
 
 server = Server("knowledge-harness", instructions=SERVER_INSTRUCTIONS)
