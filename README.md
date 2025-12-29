@@ -86,6 +86,7 @@ These are available but not included in the server instructions—useful for deb
 | `kb_get_chunk` | Get chunk details with full usage history |
 | `kb_list_documents` | List all documents |
 | `kb_delete_document` | Remove a document and all its chunks |
+| `kb_consolidate` | Convert usage traces into functional profiles |
 
 ## Task Types
 
@@ -111,6 +112,36 @@ When recording usage, specify the task type:
 2. **Use** the retrieved content to help with the task
 3. **Record** the outcome with task type and notes
 4. **Over time**, retrieval improves based on what actually worked
+
+## Recommended Usage: Research Sub-Agent
+
+For best results, use a sub-agent pattern for research tasks:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      MAIN CLAUDE                            │
+│  - Focuses on user conversation                             │
+│  - Spawns research agent when needed                        │
+│  - Provides feedback on results                             │
+└─────────────────────────────────────────────────────────────┘
+        │                                   ▲
+        │ query + context                   │ results + feedback request
+        ▼                                   │
+┌─────────────────────────────────────────────────────────────┐
+│                    RESEARCH SUB-AGENT                       │
+│  - Searches KB first                                        │
+│  - Searches web if KB insufficient                          │
+│  - Ingests valuable findings                                │
+│  - Records outcome based on main Claude's feedback          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+This pattern:
+- Keeps the main conversation focused
+- Ensures the feedback loop is always closed
+- Lets the sub-agent handle KB complexity
+
+The MCP server instructions include a template for spawning research sub-agents.
 
 ## Architecture
 

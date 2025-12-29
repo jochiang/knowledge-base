@@ -773,10 +773,47 @@ def quick_insights(db: KnowledgeDB) -> dict:
             WHERE ut.chunk_ids LIKE '%' || c.id || '%'
         )
     """).fetchone()[0]
-    
+
     if unused_count > stats["chunks"] * 0.5:
         insights["issues"].append(f"{unused_count} chunks have never been used")
-    
+
+    # Check consolidation status - are there chunks ready for profiling?
+    chunks_ready = db.conn.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT c.id
+            FROM chunks c
+            JOIN usage_traces ut ON ut.chunk_ids LIKE '%' || c.id || '%'
+            WHERE c.functional_profile IS NULL
+            GROUP BY c.id
+            HAVING COUNT(*) >= 5
+        )
+    """).fetchone()[0]
+
+    sources_ready = db.conn.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT sp.id
+            FROM source_profiles sp
+            JOIN documents d ON d.source_profile_id = sp.id
+            JOIN chunks c ON c.document_id = d.id
+            JOIN usage_traces ut ON ut.chunk_ids LIKE '%' || c.id || '%'
+            WHERE sp.functional_profile IS NULL
+            GROUP BY sp.id
+            HAVING COUNT(*) >= 10
+        )
+    """).fetchone()[0]
+
+    consolidation_needed = chunks_ready > 0 or sources_ready > 0
+    insights["consolidation"] = {
+        "status": "recommended" if consolidation_needed else "not_needed",
+        "chunks_ready_for_profiling": chunks_ready,
+        "sources_ready_for_profiling": sources_ready
+    }
+
+    if consolidation_needed:
+        insights["issues"].append(
+            f"Consolidation recommended: {chunks_ready} chunks and {sources_ready} sources ready for profiling"
+        )
+
     return insights
 
 

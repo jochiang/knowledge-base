@@ -29,6 +29,7 @@ from harness import KnowledgeHarness
 from schema import TaskType, UsageOutcome
 from context import ContextAssembler, ChunkDossier
 from reflect import run_reflection, quick_insights
+from consolidate import run_consolidation
 
 
 # ============================================================================
@@ -86,6 +87,43 @@ You have access to a persistent knowledge base that learns from usage patterns.
 - Include context when recording - "helped debug async issue" is better than "helped"
 - Search before you fetch - the answer might already be in the knowledge base
 - Reflect periodically to identify what's working and what needs improvement
+
+## Research Sub-Agent Pattern
+
+For research tasks, spawn a sub-agent to handle KB + web search. This keeps the main conversation focused and ensures the feedback loop is completed.
+
+**When to spawn a research sub-agent:**
+- User asks a question requiring research
+- You need information beyond your training data
+- The topic might benefit from prior knowledge in the KB
+
+**How to use it:**
+1. Spawn a sub-agent with the query and context
+2. Sub-agent searches KB first, then web if needed
+3. Sub-agent ingests valuable findings and returns results with chunk IDs
+4. You review the results and provide feedback
+5. Sub-agent records the outcome
+
+**Sub-agent instructions template:**
+```
+Research: [query]
+Context: [why this is needed]
+
+1. Search KB first: kb_search("[query]", task_type="[type]")
+2. If KB insufficient, search web and ingest useful content
+3. Return findings with chunk IDs used
+4. Ask me for feedback on usefulness
+5. Record outcome with kb_record based on my feedback
+```
+
+**Feedback loop:**
+When the sub-agent returns results, tell it:
+- "helpful" → records as "win"
+- "partial" → records as "partial"
+- "not useful" → records as "miss"
+- "misleading" → records as "misleading"
+
+This closes the loop and helps the KB learn what works.
 """
 
 server = Server("knowledge-harness", instructions=SERVER_INSTRUCTIONS)
@@ -282,6 +320,21 @@ This is how the knowledge base learns which content is good for which tasks.""",
             }
         ),
         Tool(
+            name="kb_consolidate",
+            description="""Run consolidation to convert usage traces into functional profiles.
+
+Consolidation analyzes chunks and sources with enough usage data and generates
+functional profiles that describe what each is good/bad for.
+
+Run this when kb_quick_insights shows consolidation is recommended.
+This improves future retrieval by encoding learned patterns into the knowledge base.""",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
             name="kb_reflect",
             description="""Run a comprehensive reflection on the knowledge base.
 
@@ -345,6 +398,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await handle_list_documents(harness, arguments)
         elif name == "kb_delete_document":
             return await handle_delete_document(harness, arguments)
+        elif name == "kb_consolidate":
+            return await handle_consolidate(harness)
         elif name == "kb_reflect":
             return await handle_reflect(harness)
         elif name == "kb_quick_insights":
@@ -558,6 +613,16 @@ async def handle_delete_document(harness: KnowledgeHarness, args: dict) -> list[
         return [TextContent(type="text", text=f"Deleted document '{doc.title}' ({len(chunks)} chunks removed)")]
     else:
         return [TextContent(type="text", text=f"Failed to delete document: {doc_id}")]
+
+
+async def handle_consolidate(harness: KnowledgeHarness) -> list[TextContent]:
+    """Handle kb_consolidate tool."""
+    import asyncio
+
+    # Run blocking consolidation in thread pool
+    report = await asyncio.to_thread(run_consolidation, harness.db)
+
+    return [TextContent(type="text", text=report.summary())]
 
 
 async def handle_reflect(harness: KnowledgeHarness) -> list[TextContent]:
