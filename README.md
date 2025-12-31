@@ -115,6 +115,27 @@ These are available but not included in the server instructions—useful for deb
 | `kb_delete_document` | Remove a document and all its chunks |
 | `kb_consolidate` | Convert usage traces into functional profiles |
 
+## Consolidation
+
+Consolidation converts episodic memory (individual usage traces) into semantic memory (functional profiles). It runs when chunks or sources have accumulated enough usage data:
+
+- **Chunks**: 5+ traces → generates a functional profile describing what the chunk is good/bad for
+- **Sources**: 10+ traces → generates a source-level profile
+
+**When to run it:**
+`kb_quick_insights` includes a consolidation status:
+```json
+{
+  "consolidation": {
+    "status": "recommended",
+    "chunks_ready_for_profiling": 3,
+    "sources_ready_for_profiling": 1
+  }
+}
+```
+
+When status is "recommended", run `kb_consolidate` to generate profiles. These profiles are then surfaced in future `kb_search` results, helping the LLM reason about whether to trust each chunk.
+
 ## Task Types
 
 When recording usage, specify the task type:
